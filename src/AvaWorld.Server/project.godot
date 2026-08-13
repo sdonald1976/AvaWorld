@@ -1,0 +1,24 @@
+; Godot project configuration for the AvaWorld headless server.
+;
+; This project has no scenes, no meshes and no camera on purpose. It is the authoritative world,
+; and it must run correctly with nothing rendering it — see DESIGN.md. Presentation belongs to a
+; separate client project that connects to this one.
+
+config_version=5
+
+[application]
+
+config/name="AvaWorld.Server"
+config/description="The authoritative world. Runs headless and keeps existing when nothing is watching."
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.4", "C#", "Forward Plus")
+
+[dotnet]
+
+project/assembly_name="AvaWorld.Server"
+
+[application/run]
+
+; No window, no renderer. Overridden by --headless on the command line anyway, but this keeps a
+; double-click from silently opening a pointless window.
+disable_stdout=false

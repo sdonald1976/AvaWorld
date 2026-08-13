@@ -1,0 +1,28 @@
+﻿<Project Sdk="Godot.NET.Sdk/4.7.1">
+
+  <!--
+    The Godot half of the world server: scheduling and I/O only.
+
+    World logic lives in AvaWorld.Simulation, which cannot reference Godot. That reference goes one
+    way and must stay that way — see DESIGN.md.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <!-- Godot.NET.Sdk leaves these off; the simulation project has them on, so match it. -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AvaWorld.Server</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The simulation only needs the abstractions; the host is what actually builds a factory. -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AvaWorld.Simulation\AvaWorld.Simulation.csproj" />
+  </ItemGroup>
+
+</Project>

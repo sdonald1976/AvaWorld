@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The world's brain-stem: pure C#, no Godot.
+
+    This project must NEVER reference Godot, Godot.NET.Sdk, or anything in the scene tree. The
+    design rule is that the server produces identical world history with no client connected, and
+    the only durable way to enforce that is to make the dependency impossible to add here. If you
+    find yourself wanting a Node in this project, the logic belongs in AvaWorld.Server instead —
+    or, more likely, the design has drifted.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,22 @@
+# Godot
+.godot/
+.mono/
+*.translation
+
+# Godot generates its own solution beside project.godot when you build from the editor.
+# The real solution is AvaWorld.slnx at the repo root.
+src/AvaWorld.Server/*.sln
+src/AvaWorld.Server/*.csproj.user
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+[Dd]ebug/
+[Rr]elease/
+
+# The world itself — runtime state, not source. Deleting it starts a new world.
+world.json
+world.json.saving
+*.world.json
