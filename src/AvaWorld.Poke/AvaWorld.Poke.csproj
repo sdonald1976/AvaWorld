@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A stand-in for the companion, for driving the world by hand. Throwaway by design: when the
+    real brain connects at step five, this stays useful only as a way to poke the wire without
+    starting an LLM.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AvaWorld.Poke</RootNamespace>
+    <AssemblyName>ava-poke</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AvaWorld.Wire\AvaWorld.Wire.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -5,20 +5,21 @@ this is the place. Neither contains the other.
 
 ## Status
 
-**Step three of six.** The world is a headless server that keeps running when nothing is watching
-it, with five connected places, a client you can walk around in, and **Ava living in it** — she
-walks from room to room on her own, and clients see her do it. Joining requires a token.
+**Step four of six.** The world is a headless server that keeps running when nothing is watching it,
+with five connected places, a client you can walk around in, and Ava living in it. **A brain can
+now steer her**: the wire is open, it takes instructions, and it reports what happens.
 
-She has no reason for going anywhere yet. Choosing *where and why* is the companion's job, and that
-connection is steps four and five — the point at which the world starts earning its place rather
-than just existing.
+Nothing intelligent is on the other end yet. Connecting the companion is step five, and it is when
+the world starts earning its place rather than just existing.
 
 ## Layout
 
 ```
 src/AvaWorld.Simulation   the world itself — plain C#, no Godot, no rendering
+src/AvaWorld.Wire         the companion's channel — protocol and WebSocket, still no Godot
+src/AvaWorld.Poke         a stand-in for the companion, for driving the world by hand
 src/AvaWorld.Server       the Godot host — scheduling and I/O only
-tests/…Simulation.Tests   13 tests, none of which need a display
+tests/…Simulation.Tests   58 tests, none of which need a display
 ```
 
 ### The rule this layout enforces
@@ -65,9 +66,10 @@ walk. The `.glb` from the companion's avatar work drops in without changing how 
 
 ### The token
 
-The world is a long-running service, so joining requires a shared secret. It is generated on first
-run and written to `.avaworld-token` beside the world file — a client on the same machine reads it
-and needs no configuration.
+The world is a long-running service, so joining requires a shared secret — on **both** channels,
+the rendering clients' and the brain's. It is generated on first run and written to
+`.avaworld-token` beside the world file, so a client on the same machine reads it and needs no
+configuration.
 
 For a world on another machine, set `AVAWORLD_TOKEN` to the same value on both ends. The token file
 is gitignored; it is a key to a running world, not source.
@@ -75,6 +77,45 @@ is gitignored; it is a key to a running world, not source.
 Server and client are the same binary in two roles, so the layout and the wire contract cannot
 drift apart. They are still separate processes: the server is authoritative and does not care
 whether anyone is connected.
+
+### The wire
+
+The companion's channel, on the port above the client's (8738 by default). Plain WebSocket and JSON
+rather than Godot's multiplayer, because the brain renders nothing and needs events in and
+intentions out — which also means it never links a Godot assembly, and anything that speaks
+WebSocket can drive the world.
+
+`ava-poke` is a stand-in for the companion, for driving her by hand:
+
+```powershell
+dotnet run --project src\AvaWorld.Poke
+```
+
+Type a place name to send her there, or `places`, `where`, `stop`, `quit`. One-shot, for scripts:
+
+```powershell
+dotnet run --project src\AvaWorld.Poke -- --say=garden --listen=30000
+```
+
+**What the world says.** On authenticating it sends `hello`, carrying the whole menu of places and
+what they adjoin. The companion is told this every time it connects, precisely so it never needs to
+store a layout that may have changed. Then `arrived`, `presence`, and `refusal` as things happen.
+
+**What the world listens to.** `goto` a place, `where`, `places`, `stop`. Note what is missing:
+there is no way to say where she should *stand*, only which place she should be *in*. Intentions
+are goals, never motion — the world keeps "how", and no message shape exists that would let a brain
+take that back.
+
+```
+< {"type":"hello","you":"ava","place":"study","places":[…],"actions":["goto",…]}
+> {"type":"goto","place":"garden"}
+< {"type":"arrived","body":"ava","place":"hall","at":"…"}
+< {"type":"arrived","body":"ava","place":"kitchen","at":"…"}
+< {"type":"arrived","body":"ava","place":"garden","at":"…"}
+```
+
+A brain taking control retires the wandering placeholder — once something is deciding, nothing else
+should be.
 
 ### Checking it works without a screen
 

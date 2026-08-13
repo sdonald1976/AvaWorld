@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AvaWorld.Simulation\AvaWorld.Simulation.csproj" />
+    <ProjectReference Include="..\..\src\AvaWorld.Wire\AvaWorld.Wire.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/AvaWorld.Poke/AvaWorld.Poke.csproj" />
     <Project Path="src/AvaWorld.Server/AvaWorld.Server.csproj">
       <BuildType Project="Debug" />
     </Project>
     <Project Path="src/AvaWorld.Simulation/AvaWorld.Simulation.csproj" />
+    <Project Path="src/AvaWorld.Wire/AvaWorld.Wire.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AvaWorld.Simulation.Tests/AvaWorld.Simulation.Tests.csproj" />

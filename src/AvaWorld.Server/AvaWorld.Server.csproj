@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AvaWorld.Simulation\AvaWorld.Simulation.csproj" />
+    <ProjectReference Include="..\AvaWorld.Wire\AvaWorld.Wire.csproj" />
   </ItemGroup>
 
 </Project>

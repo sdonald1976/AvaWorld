@@ -1,4 +1,5 @@
 using AvaWorld.Simulation;
+using AvaWorld.Wire;
 using Godot;
 using Microsoft.Extensions.Logging;
 
@@ -54,6 +55,7 @@ public partial class Main : Node
     private int _tourIndex;
 
     private string? _token;            // server only
+    private WireServer? _wire;         // server only — the companion's channel
     private AvaBody? _ava;             // server only
     private Wandering? _wandering;     // server only, placeholder until the companion connects
     private double _sinceAvaBroadcast;
@@ -146,6 +148,126 @@ public partial class Main : Node
 
         _ava = new AvaBody(_world, new Navigator(Cottage.Graph(), Cottage.Map(), Cottage.Doorways()), Cottage.Map());
         _wandering = new Wandering(Cottage.Graph(), TimeSpan.FromSeconds(20));
+
+        StartWire(args.Port + 1);
+    }
+
+    // ---- the wire (the companion's channel) ----
+
+    /// <summary>
+    /// Opens the brain's channel, one port up from the rendering clients'.
+    ///
+    /// Two transports on purpose: rendering clients want Godot's replication, the brain wants
+    /// events and intentions. Keeping them apart is what stops the companion ever linking a Godot
+    /// assembly, and it means this channel can be driven by anything that speaks WebSocket —
+    /// including a console app, which is how the protocol got proved before the brain existed.
+    /// </summary>
+    private void StartWire(int port)
+    {
+        _wire = new WireServer(port, _token!, _loggerFactory.CreateLogger<WireServer>());
+        _wire.IntentionReceived += HandleIntentionAsync;
+
+        try
+        {
+            _wire.Start();
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Could not open the wire on port {Port}; the world runs without a brain.", port);
+            _wire = null;
+        }
+    }
+
+    /// <summary>
+    /// Everything the brain may ask for. Note what is missing: there is no way to say where she
+    /// should stand, only which place she should be in. The world keeps "how".
+    /// </summary>
+    private async Task HandleIntentionAsync(WireRequest request)
+    {
+        if (_world is null)
+            return;
+
+        switch (request.Intention.Type.ToLowerInvariant())
+        {
+            case "auth":
+                // Authenticating tells her what exists. She is given the menu every time rather
+                // than being expected to remember a layout that may have changed.
+                await request.Reply(Greeting());
+                break;
+
+            case "places":
+                await request.Reply(Greeting());
+                break;
+
+            case "where":
+                await request.Reply(new Arrived(
+                    AvaBody.BodyId, _world.PlaceOf(AvaBody.BodyId) ?? Cottage.Spawn, DateTimeOffset.UtcNow));
+                break;
+
+            case "stop":
+                _wandering = null; // hand over: something else is deciding now
+                await request.Reply(new Refusal("acknowledged", "She will stay where she is."));
+                break;
+
+            case "goto":
+                await GoToAsync(request);
+                break;
+
+            default:
+                await request.Reply(new Refusal(
+                    RefusalCodes.UnknownIntention, $"I do not know how to '{request.Intention.Type}'."));
+                break;
+        }
+    }
+
+    private async Task GoToAsync(WireRequest request)
+    {
+        var place = request.Intention.Place;
+
+        if (string.IsNullOrWhiteSpace(place) || !Cottage.Graph().Contains(place))
+        {
+            await request.Reply(new Refusal(
+                RefusalCodes.UnknownPlace, $"There is no '{place}' here."));
+            return;
+        }
+
+        var from = _world!.PlaceOf(AvaBody.BodyId) ?? Cottage.Spawn;
+        if (Cottage.Graph().Route(from, place).Count == 0)
+        {
+            await request.Reply(new Refusal(
+                RefusalCodes.Unreachable, $"She cannot get to the {place} from the {from}."));
+            return;
+        }
+
+        // A brain that is steering retires the placeholder. Wandering exists only to stop the
+        // world being inert before this connection existed.
+        _wandering = null;
+
+        await _world.SetDestinationAsync(AvaBody.BodyId, place);
+        _log.LogInformation("The wire sends Ava to the {Place}.", place);
+    }
+
+    /// <summary>The menu of what exists: the only thing the companion is allowed to choose from.</summary>
+    private Hello Greeting()
+    {
+        var graph = Cottage.Graph();
+        var places = graph.All
+            .Select(p => new PlaceInfo(p.Id, p.Name, p.Description, graph.Neighbours(p.Id).ToList()))
+            .ToList();
+
+        return new Hello(
+            AvaBody.BodyId,
+            _world?.PlaceOf(AvaBody.BodyId),
+            places,
+            new[] { "goto", "where", "places", "stop" });
+    }
+
+    /// <summary>Tells the brain something happened. Fire and forget — perception must never stall the world.</summary>
+    private void Perceive(object message)
+    {
+        if (_wire is null)
+            return;
+        _ = Task.Run(() => _wire.BroadcastAsync(message));
     }
 
     /// <summary>
@@ -173,6 +295,10 @@ public partial class Main : Node
         _log.LogInformation("{Body} joined.", body);
         _ = RunAsync(async () => await _world!.EnterAsync(body, Cottage.Spawn));
         RpcId(id, nameof(Welcome), Cottage.Spawn);
+
+        // She can tell when you are around. What she does with that is the companion's business,
+        // and the design is emphatic that it must not become an excuse to nag.
+        Perceive(new Presence(body, "joined", Cottage.Spawn, DateTimeOffset.UtcNow));
     }
 
     private void OnPeerDisconnected(long id)
@@ -180,6 +306,7 @@ public partial class Main : Node
         var body = BodyFor(id);
         _log.LogInformation("{Body} left.", body);
         _ = RunAsync(async () => await _world!.LeaveAsync(body));
+        Perceive(new Presence(body, "left", null, DateTimeOffset.UtcNow));
     }
 
     private static string BodyFor(long peerId) => $"guest:{peerId}";
@@ -210,6 +337,7 @@ public partial class Main : Node
             {
                 _log.LogInformation("{Body} is now in the {Place}.", body, place);
                 Announce(body, place);
+                Perceive(new Arrived(body, place, DateTimeOffset.UtcNow));
             }
         });
     }
@@ -380,10 +508,13 @@ public partial class Main : Node
     /// </summary>
     private void MoveAva(double delta)
     {
-        if (_ava is null || _world is null || _wandering is null)
+        if (_ava is null || _world is null)
             return;
 
-        if (_wandering.Next(delta, _ava.CurrentPlace, _ava.IsWalking) is { } wantsToGo)
+        // Wandering is optional and goes away the moment something else is steering. Requiring it
+        // here is what made her stop dead the first time the wire took over: taking control set it
+        // to null, and this guard then skipped the walking too.
+        if (_wandering?.Next(delta, _ava.CurrentPlace, _ava.IsWalking) is { } wantsToGo)
         {
             _ = RunAsync(async () =>
             {
@@ -400,6 +531,7 @@ public partial class Main : Node
                 {
                     _log.LogInformation("Ava is in the {Place}.", arrivedAt);
                     Announce(AvaBody.BodyId, arrivedAt);
+                    Perceive(new Arrived(AvaBody.BodyId, arrivedAt, DateTimeOffset.UtcNow));
                 }
             });
         }
