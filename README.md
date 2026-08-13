@@ -34,23 +34,46 @@ or, more likely, the design has drifted.
 
 ## Running it
 
-Requires the **.NET/Mono build of Godot 4** (the standard build has no C# support).
-
-```bash
+```powershell
 dotnet build
+.\run-server.ps1
 ```
 
-Then run it headless. Use the `_console` executable — plain `--headless` sends output nowhere useful
-on Windows:
+The script finds Godot, refuses to launch under a build that can't run C#, and starts the server. It
+prints where the world file is, whether it created or resumed a world, and how long it was away.
+`Ctrl+C` to stop; start it again and it picks up where it left off.
 
-```bash
+Point it at a specific Godot with `-Godot <path>` or by setting `$env:GODOT`.
+
+To start a new world, delete `world.json`. To keep it elsewhere, set `AVAWORLD_STATE`.
+
+### You need the .NET build of Godot
+
+Godot ships two Windows builds and only one runs C#. With the wrong one you get:
+
+```
+ERROR: No loader found for resource: res://Main.cs (expected type: Script)
+ERROR: res://Main.tscn:6 - Parse Error: [ext_resource] referenced non-existent resource
+```
+
+**That is not a broken project.** It is Godot not knowing what a `.cs` file is, because the build was
+compiled without the .NET module. The give-away is the version banner:
+
+```
+4.7.1.stable.mono.official   ← correct
+4.7.1.stable.official        ← no C# support
+```
+
+Get the **.NET** download from [godotengine.org/download](https://godotengine.org/download).
+`run-server.ps1` checks this before launching so the failure says what it actually is — the error
+Godot gives points nowhere near the cause.
+
+If you run Godot by hand instead, use the `_console` executable on Windows; the plain one detaches
+from the terminal and you will not see the world's log at all:
+
+```powershell
 Godot_v4.7.1-stable_mono_win64_console.exe --headless --path src/AvaWorld.Server
 ```
-
-It prints where the world file is, whether it created or resumed a world, and how long it was away.
-`Ctrl+C` to stop. Start it again and it picks up where it left off.
-
-To start a new world, delete `world.json`. To put it somewhere else, set `AVAWORLD_STATE`.
 
 ## Tests
 
