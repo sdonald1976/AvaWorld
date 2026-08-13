@@ -20,3 +20,5 @@ obj/
 world.json
 world.json.saving
 *.world.json
+/.vs
+/.github
