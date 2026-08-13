@@ -52,14 +52,21 @@ To start a new world, delete `world.json`. To keep it elsewhere, set `AVAWORLD_S
 
 ### Walking around in it
 
-With a server running, connect a client from a second terminal:
+With a server running, open a window onto it from a second terminal:
 
 ```powershell
-& $env:GODOT --path src\AvaWorld.Server --client
+.\run-client.ps1
 ```
 
-WASD to walk, mouse to look, `Escape` to release the mouse, click to take it back. Add
-`--host=<addr>` to reach a world on another machine, `--port=<n>` if you moved it.
+WASD to walk, mouse to look, `Escape` to release the mouse, click to take it back.
+
+For a world on another machine, give it the address and that world's token:
+
+```powershell
+.\run-client.ps1 -Host 192.168.1.20 -Token <the world's token>
+```
+
+The client is only a viewer. Closing it changes nothing about the world except who is in it.
 
 Ava is the capsule wandering between rooms. She is a shape rather than a character on purpose:
 giving her a face before she has a mind invites reading personality into what is currently a random
