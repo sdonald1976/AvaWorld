@@ -48,7 +48,37 @@ public sealed record Hello(
 }
 
 /// <param name="Adjoins">Which places you can reach directly from here.</param>
-public sealed record PlaceInfo(string Id, string Name, string Description, IReadOnlyList<string> Adjoins);
+/// <param name="Things">What is in here that needs looking after.</param>
+public sealed record PlaceInfo(
+    string Id, string Name, string Description, IReadOnlyList<string> Adjoins, IReadOnlyList<ThingInfo> Things);
+
+/// <summary>Something in a place that changes over time, and how it is doing right now.</summary>
+/// <param name="Condition">
+/// The shared state — "fine", "dry", "wilting", "dead" — for deciding, not for saying. A stove is
+/// never "dry".
+/// </param>
+/// <param name="Text">
+/// The thing's own words for that state: "the stove is burning low". The world owns how its things
+/// describe themselves, so the brain never has to invent phrasing for something it cannot see.
+/// </param>
+/// <param name="NeedsAttention">Whether tending it now would actually do something.</param>
+public sealed record ThingInfo(string Id, string Name, string Condition, string Text, bool NeedsAttention);
+
+/// <summary>
+/// Something in the world changed condition, or somebody looked after it.
+///
+/// Carries the condition as well as the sentence, because the brain has to be able to *act* on
+/// this and not merely read it. Without a machine-readable state, a thing that starts wanting
+/// attention while she is already connected never becomes anything she can decide about — the
+/// menu she was handed on connecting said it was fine, and nothing would ever say otherwise.
+/// </summary>
+public sealed record Noticed(
+    string Type, string Place, string? Thing, string Text,
+    string Condition, bool NeedsAttention, DateTimeOffset At)
+{
+    public Noticed(string place, string? thing, string text, string condition, bool needsAttention, DateTimeOffset at)
+        : this("noticed", place, thing, text, condition, needsAttention, at) { }
+}
 
 /// <summary>A body entered a place. The bread and butter of perception.</summary>
 public sealed record Arrived(string Type, string Body, string Place, DateTimeOffset At)
@@ -77,7 +107,7 @@ public sealed record Refusal(string Type, string Code, string Message)
 /// </summary>
 public sealed class Intention
 {
-    /// <summary>"auth", "goto", or "stop".</summary>
+    /// <summary>"auth", "goto", "tend", or "stop".</summary>
     public string Type { get; set; } = "";
 
     /// <summary>For "auth".</summary>
@@ -85,6 +115,12 @@ public sealed class Intention
 
     /// <summary>For "goto" — a place id from the menu in <see cref="Hello"/>.</summary>
     public string? Place { get; set; }
+
+    /// <summary>
+    /// For "tend" — the id of a thing from the menu. Still a goal, not an action: she says which
+    /// thing wants looking after, and the world decides whether she is close enough to do it.
+    /// </summary>
+    public string? Thing { get; set; }
 
     public static Intention? Parse(string json)
     {
@@ -109,4 +145,7 @@ public static class RefusalCodes
     public const string UnknownPlace = "unknown_place";
     public const string Unreachable = "unreachable";
     public const string UnknownIntention = "unknown_intention";
+    public const string UnknownThing = "unknown_thing";
+    public const string NotHere = "not_here";
+    public const string NothingToDo = "nothing_to_do";
 }

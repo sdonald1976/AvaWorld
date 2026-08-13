@@ -41,6 +41,12 @@ public partial class Main : Node
     /// <summary>How often the server tells clients where Ava is, so she is seen walking.</summary>
     private const double AvaBroadcastSeconds = 0.1;
 
+    /// <summary>
+    /// How often the world looks at how its things are doing. They change over hours; a world that
+    /// reported on its plants sixty times a second would be unusable as material to think about.
+    /// </summary>
+    private const double NoticeSeconds = 30.0;
+
     private ILoggerFactory _loggerFactory = null!;
     private ILogger<Main> _log = null!;
 
@@ -59,6 +65,8 @@ public partial class Main : Node
     private AvaBody? _ava;             // server only
     private Wandering? _wandering;     // server only, placeholder until the companion connects
     private double _sinceAvaBroadcast;
+    private double _sinceNotice;
+    private bool _noticing;
     private Node3D? _avaGhost;         // client only — where the server says she is
     private bool _admitted;            // client only — authentication finished, safe to talk
 
@@ -94,6 +102,7 @@ public partial class Main : Node
         {
             var start = await _world.StartAsync();
             await _world.DefineLayoutAsync(Cottage.Graph(), Cottage.Spawn);
+            await _world.DefineObjectsAsync(Cottage.Things(TimeProvider.System.GetUtcNow()));
             return start;
         }).GetAwaiter().GetResult();
 
@@ -213,6 +222,10 @@ public partial class Main : Node
                 await GoToAsync(request);
                 break;
 
+            case "tend":
+                await TendAsync(request);
+                break;
+
             default:
                 await request.Reply(new Refusal(
                     RefusalCodes.UnknownIntention, $"I do not know how to '{request.Intention.Type}'."));
@@ -247,19 +260,84 @@ public partial class Main : Node
         _log.LogInformation("The wire sends Ava to the {Place}.", place);
     }
 
+    /// <summary>
+    /// Looks after something. Still a goal rather than an action: she names the thing, and the
+    /// world decides whether she is close enough and whether it would achieve anything.
+    /// </summary>
+    private async Task TendAsync(WireRequest request)
+    {
+        var thing = request.Intention.Thing ?? request.Intention.Place;
+        if (string.IsNullOrWhiteSpace(thing))
+        {
+            await request.Reply(new Refusal(RefusalCodes.UnknownThing, "Which thing?"));
+            return;
+        }
+
+        try
+        {
+            var tended = await _world!.TendAsync(AvaBody.BodyId, thing);
+            if (tended is null)
+            {
+                await request.Reply(new Refusal(
+                    RefusalCodes.NothingToDo, $"'{thing}' does not need anything right now."));
+                return;
+            }
+
+            _log.LogInformation("{Text}.", tended.Describe());
+            Perceive(NoticeOf(thing, tended.Place, tended.Describe(), tended.At));
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Not there, or no such thing. Both are the world saying no, not a failure.
+            var code = ex.Message.Contains("is not in", StringComparison.OrdinalIgnoreCase)
+                ? RefusalCodes.NotHere
+                : RefusalCodes.UnknownThing;
+            await request.Reply(new Refusal(code, ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Builds a notice carrying the thing's current state, not just a sentence about it. The brain
+    /// needs something it can act on: a thing that starts wanting attention while she is already
+    /// connected must reach her, and the menu it was handed on connecting said it was fine.
+    /// </summary>
+    private Noticed NoticeOf(string thingId, string? place, string text, DateTimeOffset at)
+    {
+        var thing = _world?.Objects.FirstOrDefault(o =>
+            string.Equals(o.Id, thingId, StringComparison.OrdinalIgnoreCase));
+        var condition = thing?.ConditionAt(DateTimeOffset.UtcNow) ?? Condition.Fine;
+
+        return new Noticed(
+            place ?? "", thingId, text,
+            condition.ToString().ToLowerInvariant(),
+            condition is Condition.Dry or Condition.Wilting,
+            at);
+    }
+
     /// <summary>The menu of what exists: the only thing the companion is allowed to choose from.</summary>
     private Hello Greeting()
     {
         var graph = Cottage.Graph();
+        var now = DateTimeOffset.UtcNow;
+
         var places = graph.All
-            .Select(p => new PlaceInfo(p.Id, p.Name, p.Description, graph.Neighbours(p.Id).ToList()))
+            .Select(p => new PlaceInfo(
+                p.Id, p.Name, p.Description,
+                graph.Neighbours(p.Id).ToList(),
+                (_world?.ObjectsIn(p.Id) ?? Array.Empty<WorldObject>())
+                    .Select(o => new ThingInfo(
+                        o.Id, o.Name,
+                        o.ConditionAt(now).ToString().ToLowerInvariant(),
+                        o.Describe(now),
+                        o.ConditionAt(now) is Condition.Dry or Condition.Wilting))
+                    .ToList()))
             .ToList();
 
         return new Hello(
             AvaBody.BodyId,
             _world?.PlaceOf(AvaBody.BodyId),
             places,
-            new[] { "goto", "where", "places", "stop" });
+            new[] { "goto", "tend", "where", "places", "stop" });
     }
 
     /// <summary>Tells the brain something happened. Fire and forget — perception must never stall the world.</summary>
@@ -481,6 +559,7 @@ public partial class Main : Node
             }
 
             MoveAva(delta);
+            NoticeThings(delta);
             return;
         }
 
@@ -563,6 +642,34 @@ public partial class Main : Node
             _sinceAvaBroadcast = 0;
             Rpc(nameof(AvaMoved), _ava.Position);
         }
+    }
+
+    /// <summary>
+    /// Lets the world notice how its things are doing, and tells the brain when one changes.
+    ///
+    /// Checked on a slow cadence rather than every frame: these change over hours, and the check
+    /// costs a save whenever something has moved. Nothing is lost by being a minute late, and a
+    /// world that reported on its plants sixty times a second would be unusable as material.
+    /// </summary>
+    private void NoticeThings(double delta)
+    {
+        if (_world is null)
+            return;
+
+        _sinceNotice += delta;
+        if (_sinceNotice < NoticeSeconds || _noticing)
+            return;
+        _sinceNotice = 0;
+        _noticing = true;
+
+        _ = RunAsync(async () =>
+        {
+            foreach (var e in await _world.NoticeAsync())
+            {
+                _log.LogInformation("{Text}.", e.Describe());
+                Perceive(NoticeOf(e.Body, e.Place, e.Describe(), e.At));
+            }
+        }, () => _noticing = false);
     }
 
     /// <summary>

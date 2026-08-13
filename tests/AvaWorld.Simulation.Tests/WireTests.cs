@@ -211,7 +211,11 @@ public class WireTests : IAsyncLifetime
     {
         var hello = new Hello(
             "ava", "hall",
-            new[] { new PlaceInfo("hall", "the hall", "plain", new[] { "kitchen" }) },
+            new[]
+            {
+                new PlaceInfo("hall", "the hall", "plain", new[] { "kitchen" },
+                    new[] { new ThingInfo("basil", "the basil", "dry", "the basil is looking dry", true) }),
+            },
             new[] { "goto" });
 
         var json = Protocol.Serialize(hello);
@@ -221,6 +225,12 @@ public class WireTests : IAsyncLifetime
         Assert.Equal("hall", parsed.RootElement.GetProperty("place").GetString());
         Assert.Equal("kitchen",
             parsed.RootElement.GetProperty("places")[0].GetProperty("adjoins")[0].GetString());
+
+        // Things in a place travel with it, so she learns what wants looking after without having
+        // to remember a layout — the same reason the places themselves are re-sent every time.
+        var thing = parsed.RootElement.GetProperty("places")[0].GetProperty("things")[0];
+        Assert.Equal("basil", thing.GetProperty("id").GetString());
+        Assert.True(thing.GetProperty("needsAttention").GetBoolean());
     }
 
     [Fact]

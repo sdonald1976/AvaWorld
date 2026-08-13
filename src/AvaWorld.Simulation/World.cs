@@ -260,6 +260,123 @@ public sealed class World
         return true;
     }
 
+    // ---- things that need looking after ----
+
+    /// <summary>Everything in the world that changes over time.</summary>
+    public IReadOnlyList<WorldObject> Objects => State?.Objects ?? (IReadOnlyList<WorldObject>)Array.Empty<WorldObject>();
+
+    /// <summary>Objects in a place.</summary>
+    public IReadOnlyList<WorldObject> ObjectsIn(string placeId) =>
+        Objects.Where(o => string.Equals(o.PlaceId, placeId, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    /// <summary>
+    /// Adds objects the world should contain, skipping any that already exist. Called at startup
+    /// with the authored set: like the layout, what exists is authored, but how it is *doing* is
+    /// accumulated and must survive.
+    /// </summary>
+    public async Task DefineObjectsAsync(IEnumerable<WorldObject> objects, CancellationToken ct = default)
+    {
+        var state = State ?? throw new InvalidOperationException("StartAsync must run before DefineObjectsAsync.");
+        var added = 0;
+
+        foreach (var candidate in objects)
+        {
+            var existing = state.Objects.FirstOrDefault(o =>
+                string.Equals(o.Id, candidate.Id, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                // Refresh what is authored, keep what is accumulated. Without this, changing a
+                // thing's wording or how long it can be left has no effect on a world that already
+                // exists — which is every world, after the first run.
+                existing.Name = candidate.Name;
+                existing.TendedVerb = candidate.TendedVerb;
+                existing.Words = candidate.Words;
+                existing.Patience = candidate.Patience;
+                existing.PlaceId = candidate.PlaceId;
+                added++; // save the refresh
+                continue;
+            }
+            if (!Places.Contains(candidate.PlaceId))
+            {
+                _logger.LogWarning(
+                    "Object '{Object}' names place '{Place}', which the layout does not have; skipped.",
+                    candidate.Id, candidate.PlaceId);
+                continue;
+            }
+
+            state.Objects.Add(candidate);
+            added++;
+        }
+
+        if (added > 0)
+            await _store.SaveAsync(state, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Brings every object up to the present, recording an event for each one whose condition has
+    /// changed since it was last reported.
+    ///
+    /// Only *changes* are events. A plant that has been dry for two days is not news twice, and a
+    /// diary that said so every tick would drown everything else she has to think about.
+    /// </summary>
+    public async Task<IReadOnlyList<WorldEvent>> NoticeAsync(CancellationToken ct = default)
+    {
+        var state = State ?? throw new InvalidOperationException("StartAsync must run before NoticeAsync.");
+        var now = _clock.GetUtcNow();
+        var noticed = new List<WorldEvent>();
+
+        foreach (var thing in state.Objects)
+        {
+            var condition = thing.ConditionAt(now);
+            if (condition == thing.LastReported)
+                continue;
+
+            thing.LastReported = condition;
+            if (condition == Condition.Dead)
+                thing.Died = true;
+
+            var e = new WorldEvent(now, WorldEventKind.Noticed, thing.Id, thing.PlaceId, thing.Describe(now));
+            Record(state, e);
+            noticed.Add(e);
+        }
+
+        if (noticed.Count > 0)
+            await _store.SaveAsync(state, ct).ConfigureAwait(false);
+
+        return noticed;
+    }
+
+    /// <summary>
+    /// Looks after something, if the body is in the same place as it. Returns the event when it
+    /// actually did something — tending a healthy plant, or a dead one, is not an event.
+    /// </summary>
+    public async Task<WorldEvent?> TendAsync(string body, string objectId, CancellationToken ct = default)
+    {
+        var state = State ?? throw new InvalidOperationException("StartAsync must run before TendAsync.");
+
+        var thing = state.Objects.FirstOrDefault(o =>
+            string.Equals(o.Id, objectId, StringComparison.OrdinalIgnoreCase));
+        if (thing is null)
+            throw new InvalidOperationException($"There is no '{objectId}' here.");
+
+        // You have to be there. Tending the greenhouse basil from the study would make places
+        // decorative, and the whole point of them is that being somewhere matters.
+        var where = PlaceOf(body);
+        if (!string.Equals(where, thing.PlaceId, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"{body} is not in the {thing.PlaceId}.");
+
+        var now = _clock.GetUtcNow();
+        if (!thing.Tend(now))
+            return null;
+
+        var e = new WorldEvent(
+            now, WorldEventKind.Tended, body, thing.PlaceId, $"{thing.TendedVerb} {thing.Name}");
+        Record(state, e);
+        await _store.SaveAsync(state, ct).ConfigureAwait(false);
+        return e;
+    }
+
     /// <summary>The most recent events, newest last.</summary>
     public IReadOnlyList<WorldEvent> RecentEvents(int count = 20) =>
         State is null

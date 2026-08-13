@@ -11,6 +11,12 @@ public enum WorldEventKind
 
     /// <summary>A body entered the world.</summary>
     Joined,
+
+    /// <summary>Something in a place changed condition — the first thing worth telling her about.</summary>
+    Noticed,
+
+    /// <summary>Somebody looked after something.</summary>
+    Tended,
 }
 
 /// <summary>
@@ -25,7 +31,11 @@ public enum WorldEventKind
 /// <param name="Kind">What sort of thing happened.</param>
 /// <param name="Body">Who it happened to.</param>
 /// <param name="Place">Where, if the event has a location.</param>
-public sealed record WorldEvent(DateTimeOffset At, WorldEventKind Kind, string Body, string? Place)
+/// <param name="Detail">
+/// What happened, when the event is about a thing rather than a body — "the basil is looking dry".
+/// </param>
+public sealed record WorldEvent(
+    DateTimeOffset At, WorldEventKind Kind, string Body, string? Place, string? Detail = null)
 {
     /// <summary>A plain-language rendering. Not for the user — for logs and, later, for perception.</summary>
     public string Describe() => Kind switch
@@ -33,6 +43,8 @@ public sealed record WorldEvent(DateTimeOffset At, WorldEventKind Kind, string B
         WorldEventKind.Arrived => $"{Body} arrived in the {Place}",
         WorldEventKind.Joined => Place is null ? $"{Body} appeared" : $"{Body} appeared in the {Place}",
         WorldEventKind.Left => $"{Body} left",
+        WorldEventKind.Noticed => $"In the {Place}, {Detail}",
+        WorldEventKind.Tended => $"{Body} {Detail} in the {Place}",
         _ => $"{Body}: {Kind}",
     };
 }

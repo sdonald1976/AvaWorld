@@ -54,6 +54,36 @@ public static class Cottage
             .Add(new PlaceBounds(Garden, -16f, -34f, 16f, 16f));
 
     /// <summary>
+    /// The things in it that need looking after.
+    ///
+    /// Two, on purpose. One that wants attention often enough to matter within a session, and one
+    /// slow enough that forgetting it over a weekend is a real loss — so the world has both a
+    /// rhythm and a stake. More would be noise before either of these has earned its place.
+    /// </summary>
+    public static IReadOnlyList<WorldObject> Things(DateTimeOffset now) => new[]
+    {
+        new WorldObject
+        {
+            Id = "basil",
+            PlaceId = Greenhouse,
+            Name = "the basil",
+            TendedVerb = "watered",
+            Patience = TimeSpan.FromHours(8),
+            CreatedAt = now,
+        },
+        new WorldObject
+        {
+            Id = "stove",
+            PlaceId = Kitchen,
+            Name = "the stove",
+            TendedVerb = "banked",
+            Words = ConditionWords.Fire,
+            Patience = TimeSpan.FromHours(20),
+            CreatedAt = now,
+        },
+    };
+
+    /// <summary>
     /// The ways between rooms. One definition, three uses: the engine builds a floor strip from
     /// it, navigation steers through its middle, and the layout check proves it actually joins the
     /// two rooms it claims to.

@@ -46,6 +46,13 @@ public sealed class WorldState
     public Dictionary<string, string> Destinations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Things in the world that need looking after. Persisted, because the whole point of them is
+    /// that leaving them has consequences — a plant that reset itself on restart would be
+    /// scenery, and nobody would ever have to remember it.
+    /// </summary>
+    public List<WorldObject> Objects { get; set; } = new();
+
+    /// <summary>
     /// What has happened, oldest first, capped at <see cref="World.MaxRetainedEvents"/>.
     ///
     /// A cap rather than unbounded growth because this file is rewritten on every tick, and an
