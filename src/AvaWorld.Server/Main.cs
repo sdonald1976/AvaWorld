@@ -511,6 +511,25 @@ public partial class Main : Node
         if (_ava is null || _world is null)
             return;
 
+        // A connected brain is the authority on where she goes, from the moment it connects —
+        // not from its first instruction. Waiting for a command was wrong: a good roaming policy
+        // mostly decides to stay put, so the placeholder kept pacing her between rooms for as long
+        // as the brain was content. She noticed, too, and wrote in her diary that her own days
+        // felt "restless" — an artefact of this, reported back as if it were her character.
+        //
+        // It comes back if she is left alone again, so a world with nobody deciding is not inert.
+        var brainAttached = _wire is { Connected: > 0 };
+        if (brainAttached && _wandering is not null)
+        {
+            _wandering = null;
+            _log.LogInformation("A brain is connected; she decides where she goes now.");
+        }
+        else if (!brainAttached && _wandering is null)
+        {
+            _wandering = new Wandering(Cottage.Graph(), TimeSpan.FromSeconds(20));
+            _log.LogInformation("No brain connected; she drifts on her own again.");
+        }
+
         // Wandering is optional and goes away the moment something else is steering. Requiring it
         // here is what made her stop dead the first time the wire took over: taking control set it
         // to null, and this guard then skipped the walking too.
