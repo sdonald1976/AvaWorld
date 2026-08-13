@@ -37,6 +37,9 @@ public partial class Main : Node
     /// </summary>
     private const double PositionReportSeconds = 0.1;
 
+    /// <summary>How often the server tells clients where Ava is, so she is seen walking.</summary>
+    private const double AvaBroadcastSeconds = 0.1;
+
     private ILoggerFactory _loggerFactory = null!;
     private ILogger<Main> _log = null!;
 
@@ -49,6 +52,13 @@ public partial class Main : Node
     private bool _walking;
     private List<string> _tour = new();
     private int _tourIndex;
+
+    private string? _token;            // server only
+    private AvaBody? _ava;             // server only
+    private Wandering? _wandering;     // server only, placeholder until the companion connects
+    private double _sinceAvaBroadcast;
+    private Node3D? _avaGhost;         // client only — where the server says she is
+    private bool _admitted;            // client only — authentication finished, safe to talk
 
     public override void _Ready()
     {
@@ -113,15 +123,48 @@ public partial class Main : Node
             return;
         }
 
+        // Nobody gets in without the token. With an auth callback set, PeerConnected does not fire
+        // until authentication succeeds, so everything downstream can assume the peer is allowed.
+        _token = WorldToken.ResolveOrCreate(path);
+        var scene = (SceneMultiplayer)Multiplayer;
+        scene.AuthCallback = Callable.From<long, byte[]>(OnAuthReceived);
+        scene.AuthTimeout = 5.0;
+        scene.PeerAuthenticationFailed += id =>
+            _log.LogWarning("Peer {Id} failed authentication and was refused.", id);
+
         Multiplayer.MultiplayerPeer = peer;
         Multiplayer.PeerConnected += OnPeerConnected;
         Multiplayer.PeerDisconnected += OnPeerDisconnected;
 
+        _log.LogInformation("Token: {Path}", WorldToken.PathBeside(path));
+
         _log.LogInformation("Listening on port {Port}. Ava is in the {Place}.", args.Port, _world.PlaceOf("ava") ?? Cottage.Spawn);
 
-        // Ava exists whether or not she has a body yet — she lives here even with nobody watching.
-        if (_world.PlaceOf("ava") is null)
-            Task.Run(() => _world!.EnterAsync("ava", Cottage.Spawn)).GetAwaiter().GetResult();
+        // She lives here whether or not anyone is watching.
+        if (_world.PlaceOf(AvaBody.BodyId) is null)
+            Task.Run(() => _world!.EnterAsync(AvaBody.BodyId, Cottage.Spawn)).GetAwaiter().GetResult();
+
+        _ava = new AvaBody(_world, new Navigator(Cottage.Graph(), Cottage.Map(), Cottage.Doorways()), Cottage.Map());
+        _wandering = new Wandering(Cottage.Graph(), TimeSpan.FromSeconds(20));
+    }
+
+    /// <summary>
+    /// A peer has presented something. Accept only an exact match; anything else is disconnected
+    /// rather than left hanging, so a wrong token fails immediately instead of timing out.
+    /// </summary>
+    private void OnAuthReceived(long id, byte[] presented)
+    {
+        var scene = (SceneMultiplayer)Multiplayer;
+        var text = System.Text.Encoding.UTF8.GetString(presented).Trim();
+
+        if (_token is not null && WorldToken.Matches(_token, text))
+        {
+            scene.CompleteAuth((int)id);
+            return;
+        }
+
+        _log.LogWarning("Peer {Id} presented the wrong token.", id);
+        scene.DisconnectPeer((int)id);
     }
 
     private void OnPeerConnected(long id)
@@ -166,7 +209,7 @@ public partial class Main : Node
             if (await _world.EnterAsync(body, place))
             {
                 _log.LogInformation("{Body} is now in the {Place}.", body, place);
-                Rpc(nameof(PlaceChanged), body, place);
+                Announce(body, place);
             }
         });
     }
@@ -189,10 +232,55 @@ public partial class Main : Node
         _log.LogInformation("{Body} is now in the {Place}.", body, place);
     }
 
+    /// <summary>
+    /// Server → everyone: this is where Ava is. Unreliable, because a dropped update is corrected
+    /// a tenth of a second later and a stale position is worse than a missed one.
+    /// </summary>
+    [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false,
+         TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered)]
+    public void AvaMoved(Vector3 position)
+    {
+        if (_isServer || _avaGhost is null)
+            return;
+
+        // Snap rather than interpolate for now. Ten updates a second at walking pace is smooth
+        // enough to read, and interpolation is a rendering nicety that can wait for a real model.
+        _avaGhost.Position = position;
+    }
+
     // ---- client ----
 
     private void StartClient(CommandLine args)
     {
+        var token = WorldToken.ResolveForClient(WorldFilePath());
+        if (token is null)
+        {
+            _log.LogError(
+                "No token. Set {Var}, or run this beside a world that has written its {File}.",
+                WorldToken.EnvironmentVariable, WorldToken.PathBeside(WorldFilePath()));
+            GetTree().Quit(1);
+            return;
+        }
+
+        // Godot's handshake needs both ends to finish, and a peer only enters the authenticating
+        // state at all when an auth callback is set. So the client sets one — it asks nothing of
+        // the server, so it accepts immediately — and on being asked, sends the token and declares
+        // itself satisfied. Without the CompleteAuth here, a correct token still times out, which
+        // looks exactly like a wrong one.
+        var net = (SceneMultiplayer)Multiplayer;
+        net.AuthCallback = Callable.From<long, byte[]>((id, _) => net.CompleteAuth((int)id));
+        net.AuthTimeout = 5.0;
+        net.PeerAuthenticating += id =>
+        {
+            net.SendAuth((int)id, System.Text.Encoding.UTF8.GetBytes(token));
+            net.CompleteAuth((int)id);
+        };
+        net.PeerAuthenticationFailed += _ =>
+        {
+            _log.LogError("The world refused our token.");
+            GetTree().Quit(1);
+        };
+
         var peer = new ENetMultiplayerPeer();
         var error = peer.CreateClient(args.Host, args.Port);
         if (error != Error.Ok)
@@ -203,7 +291,13 @@ public partial class Main : Node
         }
 
         Multiplayer.MultiplayerPeer = peer;
-        Multiplayer.ConnectedToServer += () => _log.LogInformation("Connected to the world at {Host}:{Port}.", args.Host, args.Port);
+        Multiplayer.ConnectedToServer += () =>
+        {
+            // Only true once authentication has completed. Sending anything before this point is
+            // a packet the server rejects as not-an-auth-command, which floods its log.
+            _admitted = true;
+            _log.LogInformation("Connected to the world at {Host}:{Port}.", args.Host, args.Port);
+        };
         Multiplayer.ConnectionFailed += () =>
         {
             _log.LogError("The world at {Host}:{Port} did not answer. Is the server running?", args.Host, args.Port);
@@ -223,6 +317,12 @@ public partial class Main : Node
 
         _player = new Player { Name = "Player", Position = WorldGeometry.SpawnPoint(), TakesInput = !_walking };
         scene.AddChild(_player);
+
+        // A stand-in for her, moved by the server. Not a character — a marker that she is a body
+        // in a place rather than a value in a database. The .glb from the companion's avatar work
+        // replaces this without changing anything about how she moves.
+        _avaGhost = WorldGeometry.BuildAvaStandIn();
+        scene.AddChild(_avaGhost);
 
         if (_walking)
         {
@@ -251,6 +351,8 @@ public partial class Main : Node
                 _ticking = true;
                 _ = RunAsync(async () => await _world!.TickAsync(), () => _ticking = false);
             }
+
+            MoveAva(delta);
             return;
         }
 
@@ -265,10 +367,50 @@ public partial class Main : Node
             return;
         _sinceReport = 0;
 
-        if (Multiplayer.HasMultiplayerPeer() && Multiplayer.MultiplayerPeer.GetConnectionStatus()
-            == MultiplayerPeer.ConnectionStatus.Connected)
-        {
+        if (_admitted)
             RpcId(1, nameof(ReportPosition), _player.Position);
+    }
+
+    /// <summary>
+    /// Walks Ava, and tells anyone watching where she is.
+    ///
+    /// Note the division: this decides nothing about where she goes. It advances a body toward a
+    /// destination the world already holds, and records arrivals. The placeholder that *chooses*
+    /// destinations is the only part here that step five deletes.
+    /// </summary>
+    private void MoveAva(double delta)
+    {
+        if (_ava is null || _world is null || _wandering is null)
+            return;
+
+        if (_wandering.Next(delta, _ava.CurrentPlace, _ava.IsWalking) is { } wantsToGo)
+        {
+            _ = RunAsync(async () =>
+            {
+                if (await _world.SetDestinationAsync(AvaBody.BodyId, wantsToGo))
+                    _log.LogInformation("Ava sets off for the {Place}.", wantsToGo);
+            });
+        }
+
+        if (_ava.Advance(delta) is { } arrivedAt)
+        {
+            _ = RunAsync(async () =>
+            {
+                if (await _world.EnterAsync(AvaBody.BodyId, arrivedAt))
+                {
+                    _log.LogInformation("Ava is in the {Place}.", arrivedAt);
+                    Announce(AvaBody.BodyId, arrivedAt);
+                }
+            });
+        }
+
+        // Her position goes out continuously, not only on arrival, so a client can watch her walk
+        // rather than see her teleport between rooms.
+        _sinceAvaBroadcast += delta;
+        if (_sinceAvaBroadcast >= AvaBroadcastSeconds && Multiplayer.GetPeers().Length > 0)
+        {
+            _sinceAvaBroadcast = 0;
+            Rpc(nameof(AvaMoved), _ava.Position);
         }
     }
 
@@ -305,6 +447,16 @@ public partial class Main : Node
 
         _player.Position += to.Normalized() * (float)(12.0 * delta);
     }
+
+    /// <summary>
+    /// Broadcasts a room change, from whichever thread noticed it.
+    ///
+    /// World writes happen off the main thread so saving cannot stall the frame loop, but Godot
+    /// refuses multiplayer calls from anywhere else — "Multiplayer can only be manipulated from
+    /// the main thread". Deferring hops back before sending, so the two rules can both hold.
+    /// </summary>
+    private void Announce(string body, string place)
+        => Callable.From(() => Rpc(nameof(PlaceChanged), body, place)).CallDeferred();
 
     /// <summary>
     /// Runs simulation work off the main thread. The frame loop is synchronous and the store is

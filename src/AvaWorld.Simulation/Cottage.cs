@@ -54,21 +54,22 @@ public static class Cottage
             .Add(new PlaceBounds(Garden, -16f, -34f, 16f, 16f));
 
     /// <summary>
-    /// The corridors, as floor strips joining room edges. Purely physical — the world has no
-    /// concept of a corridor, only of rooms that adjoin.
+    /// The ways between rooms. One definition, three uses: the engine builds a floor strip from
+    /// it, navigation steers through its middle, and the layout check proves it actually joins the
+    /// two rooms it claims to.
     ///
-    /// Each strip deliberately <em>overlaps</em> the two rooms it joins by a metre rather than
-    /// meeting them exactly. Abutting floors that share an edge coordinate leave a hairline crack
-    /// once floats are involved, and a body can fall through it; an overlap cannot.
+    /// Each strip deliberately <em>overlaps</em> the rooms it joins by a metre rather than meeting
+    /// them exactly. Abutting floors that share an edge coordinate leave a hairline crack once
+    /// floats are involved, and a body can fall through it; an overlap cannot.
     ///
-    /// They are not in <see cref="Map"/>, so standing in one resolves to no place at all. That is
-    /// intended — a body between rooms keeps the room it came from.
+    /// Doorways are not places. Standing in one resolves to no place at all, which is intended —
+    /// a body between rooms keeps the room it came from.
     /// </summary>
-    public static IReadOnlyList<PlaceBounds> Corridors() => new[]
+    public static IReadOnlyList<Doorway> Doorways() => new[]
     {
-        new PlaceBounds("corridor:hall-kitchen", -7.5f, 0f, 7f, 4f),
-        new PlaceBounds("corridor:hall-study", 7.5f, 0f, 7f, 4f),
-        new PlaceBounds("corridor:kitchen-greenhouse", -16f, -7.5f, 4f, 7f),
-        new PlaceBounds("corridor:greenhouse-garden", -16f, -24f, 4f, 6f),
+        new Doorway(Hall, Kitchen, new PlaceBounds("way:hall-kitchen", -7.5f, 0f, 7f, 4f)),
+        new Doorway(Hall, Study, new PlaceBounds("way:hall-study", 7.5f, 0f, 7f, 4f)),
+        new Doorway(Kitchen, Greenhouse, new PlaceBounds("way:kitchen-greenhouse", -16f, -7.5f, 4f, 7f)),
+        new Doorway(Greenhouse, Garden, new PlaceBounds("way:greenhouse-garden", -16f, -24f, 4f, 6f)),
     };
 }

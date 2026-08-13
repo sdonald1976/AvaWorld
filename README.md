@@ -5,12 +5,13 @@ this is the place. Neither contains the other.
 
 ## Status
 
-**Step two of six.** The world is a headless server that keeps running when nothing is watching it,
-with five connected places you can walk around as a client. It knows who is in which room, records
-what happened, and remembers all of it across a restart.
+**Step three of six.** The world is a headless server that keeps running when nothing is watching
+it, with five connected places, a client you can walk around in, and **Ava living in it** — she
+walks from room to room on her own, and clients see her do it. Joining requires a token.
 
-No companion connection yet — that is steps four and five, and it is when the world starts earning
-its place rather than just existing.
+She has no reason for going anywhere yet. Choosing *where and why* is the companion's job, and that
+connection is steps four and five — the point at which the world starts earning its place rather
+than just existing.
 
 ## Layout
 
@@ -57,6 +58,19 @@ With a server running, connect a client from a second terminal:
 
 WASD to walk, mouse to look, `Escape` to release the mouse, click to take it back. Add
 `--host=<addr>` to reach a world on another machine, `--port=<n>` if you moved it.
+
+Ava is the capsule wandering between rooms. She is a shape rather than a character on purpose:
+giving her a face before she has a mind invites reading personality into what is currently a random
+walk. The `.glb` from the companion's avatar work drops in without changing how she moves.
+
+### The token
+
+The world is a long-running service, so joining requires a shared secret. It is generated on first
+run and written to `.avaworld-token` beside the world file — a client on the same machine reads it
+and needs no configuration.
+
+For a world on another machine, set `AVAWORLD_TOKEN` to the same value on both ends. The token file
+is gitignored; it is a key to a running world, not source.
 
 Server and client are the same binary in two roles, so the layout and the wire contract cannot
 drift apart. They are still separate processes: the server is authoritative and does not care
@@ -148,14 +162,18 @@ the room it came from rather than having one invented for it.
 
 Worth stating plainly rather than discovering later:
 
+- **She has no reason to go anywhere.** `Wandering` picks a random room every twenty seconds. The
+  design has roaming driven deterministically by her state — spirits, energy by hour, open
+  curiosities — all of which live in the companion. That placeholder should be *deleted* at step
+  five, not extended. Movement without reason is exactly what the design is trying to avoid.
 - **Movement is client-reported.** The server owns occupancy and decides which room a position is
-  in, but it does not validate the position itself. Fine for one trusted user on a private world;
-  it is not a defence against a modified client, and step three's authentication is the point at
-  which that starts to matter.
-- **There is no authentication on the wire.** The world was local when this was designed and is
-  now not. Anything that can reach the port can join.
-- **Ava has no body.** She exists in the world's beliefs and is in a room, but nothing represents
-  her in the scene and nothing moves her. That is step three.
+  in, but does not validate the position itself. Fine for a trusted user on a private world; it is
+  not a defence against a modified client.
+- **There is no navmesh.** Routing is room-to-room through doorways, which is the right
+  granularity for empty rooms. Once there is furniture to walk around, a navmesh belongs
+  *underneath* this — steering between the same waypoints, not replacing them.
+- **Nobody can see the guests.** Ava is drawn on every client, but other people's players are not.
+  Harmless while there is one of you.
 
 ## Design
 

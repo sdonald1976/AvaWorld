@@ -20,5 +20,9 @@ obj/
 world.json
 world.json.saving
 *.world.json
+
+# The world's access token. Generated on first run and never source. This repo is public;
+# committing it would publish the key to the world running on your machine.
+.avaworld-token
 /.vs
 /.github

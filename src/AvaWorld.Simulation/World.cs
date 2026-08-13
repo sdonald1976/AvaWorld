@@ -206,9 +206,47 @@ public sealed class World
             body,
             placeId));
 
+        // Arriving where you were headed ends the journey. Leaving the destination set would send
+        // her straight back out of the room she just walked into.
+        if (state.Destinations.TryGetValue(body, out var heading)
+            && string.Equals(heading, placeId, StringComparison.OrdinalIgnoreCase))
+        {
+            state.Destinations.Remove(body);
+        }
+
         await _store.SaveAsync(state, ct).ConfigureAwait(false);
         return true;
     }
+
+    /// <summary>
+    /// Sets where a body is trying to get to. This is the shape every later instruction takes:
+    /// a place name, never a direction or a position. The world decides how to get there.
+    ///
+    /// Returns false when she is already there — asking for somewhere you are standing is not an
+    /// error, it just isn't a journey.
+    /// </summary>
+    public async Task<bool> SetDestinationAsync(string body, string placeId, CancellationToken ct = default)
+    {
+        var state = State ?? throw new InvalidOperationException("StartAsync must run before SetDestinationAsync.");
+        if (!Places.Contains(placeId))
+            throw new InvalidOperationException($"Unknown place '{placeId}'.");
+
+        if (string.Equals(PlaceOf(body), placeId, StringComparison.OrdinalIgnoreCase))
+        {
+            // Already here. Drop any stale intention so she doesn't set off again later.
+            if (state.Destinations.Remove(body))
+                await _store.SaveAsync(state, ct).ConfigureAwait(false);
+            return false;
+        }
+
+        state.Destinations[body] = placeId;
+        await _store.SaveAsync(state, ct).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>Where a body is heading, or null if it is staying put.</summary>
+    public string? DestinationOf(string body) =>
+        State is not null && State.Destinations.TryGetValue(body, out var place) ? place : null;
 
     /// <summary>Removes a body from the world (a client disconnected). Ava is never removed.</summary>
     public async Task<bool> LeaveAsync(string body, CancellationToken ct = default)

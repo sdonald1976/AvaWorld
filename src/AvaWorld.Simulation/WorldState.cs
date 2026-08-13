@@ -39,6 +39,13 @@ public sealed class WorldState
     public Dictionary<string, string> Occupancy { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Where a body is trying to get to, by place id. Persisted deliberately: if the world stops
+    /// while she is on her way to the greenhouse, she is still on her way to the greenhouse when
+    /// it starts again. An intention is part of what continuing means.
+    /// </summary>
+    public Dictionary<string, string> Destinations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// What has happened, oldest first, capped at <see cref="World.MaxRetainedEvents"/>.
     ///
     /// A cap rather than unbounded growth because this file is rewritten on every tick, and an

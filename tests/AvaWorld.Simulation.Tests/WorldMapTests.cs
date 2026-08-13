@@ -80,27 +80,12 @@ public class WorldMapTests
     }
 
     [Fact]
-    public void CorridorsSpanTheGaps_TheyClaimTo()
+    public void EveryDoorway_ReachesBothRoomsItClaimsToJoin()
     {
-        // Each corridor must actually touch both rooms it joins, or there is a hole in the floor
-        // between them and the world is not walkable — which no unit of the graph would catch.
-        var map = Cottage.Map();
-        var corridors = Cottage.Corridors();
-
-        foreach (var (a, b) in new[]
-                 {
-                     (Cottage.Hall, Cottage.Kitchen),
-                     (Cottage.Hall, Cottage.Study),
-                     (Cottage.Kitchen, Cottage.Greenhouse),
-                     (Cottage.Greenhouse, Cottage.Garden),
-                 })
-        {
-            var roomA = map.For(a)!.Value;
-            var roomB = map.For(b)!.Value;
-            var joining = corridors.Where(c => c.Overlaps(roomA) && c.Overlaps(roomB)).ToList();
-
-            Assert.True(joining.Count > 0, $"No corridor connects {a} to {b} — there is a hole in the floor.");
-        }
+        // A doorway that only nearly meets a room is a hole in the floor between them, and no
+        // amount of graph correctness would catch it.
+        var problems = new Navigator(Cottage.Graph(), Cottage.Map(), Cottage.Doorways()).Reconcile();
+        Assert.Empty(problems);
     }
 
     [Fact]

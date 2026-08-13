@@ -31,8 +31,8 @@ public static class WorldGeometry
         foreach (var bounds in map.Bounds)
             AddSlab(root, bounds, withVisuals, RoomColour(bounds.PlaceId));
 
-        foreach (var corridor in Cottage.Corridors())
-            AddSlab(root, corridor, withVisuals, new Color(0.32f, 0.30f, 0.28f));
+        foreach (var doorway in Cottage.Doorways())
+            AddSlab(root, doorway.Bounds, withVisuals, new Color(0.32f, 0.30f, 0.28f));
 
         // A body that leaves the floor should come back, not fall forever. Cheaper and less
         // fragile than fencing every edge while the layout is still changing shape.
@@ -47,6 +47,32 @@ public static class WorldGeometry
     {
         var hall = Cottage.Map().For(Cottage.Spawn)!.Value;
         return new Vector3(hall.CentreX, 1.2f, hall.CentreZ);
+    }
+
+    /// <summary>
+    /// A visible stand-in for Ava on the client. Deliberately a shape, not a character: giving her
+    /// a face before she has a mind invites reading personality into a random walk. The `.glb` from
+    /// the companion's avatar work drops in here later without changing how she moves.
+    /// </summary>
+    public static Node3D BuildAvaStandIn()
+    {
+        var root = new Node3D { Name = "Ava" };
+
+        root.AddChild(new MeshInstance3D
+        {
+            Name = "Body",
+            Position = new Vector3(0, 0.9f, 0),
+            Mesh = new CapsuleMesh { Height = 1.8f, Radius = 0.32f },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color(0.85f, 0.62f, 0.55f),
+                EmissionEnabled = true,
+                Emission = new Color(0.35f, 0.18f, 0.15f),
+                EmissionEnergyMultiplier = 0.4f,
+            },
+        });
+
+        return root;
     }
 
     /// <summary>The centre of a place, as somewhere to stand in it.</summary>
