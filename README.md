@@ -5,12 +5,13 @@ this is the place. Neither contains the other.
 
 ## Status
 
-**Step four of six.** The world is a headless server that keeps running when nothing is watching it,
+**Step five of six.** The world is a headless server that keeps running when nothing is watching it,
 with five connected places, a client you can walk around in, and Ava living in it. **A brain can
 now steer her**: the wire is open, it takes instructions, and it reports what happens.
 
-Nothing intelligent is on the other end yet. Connecting the companion is step five, and it is when
-the world starts earning its place rather than just existing.
+The companion is connected: she moves for her own reasons, and can say what they were. What remains
+is step six — world events reaching her memory and reflection, so the world improves her continuity
+rather than only her whereabouts.
 
 ## Layout
 
@@ -203,10 +204,13 @@ the room it came from rather than having one invented for it.
 
 Worth stating plainly rather than discovering later:
 
-- **She has no reason to go anywhere.** `Wandering` picks a random room every twenty seconds. The
-  design has roaming driven deterministically by her state — spirits, energy by hour, open
-  curiosities — all of which live in the companion. That placeholder should be *deleted* at step
-  five, not extended. Movement without reason is exactly what the design is trying to avoid.
+- **`Wandering` is still here, and shouldn't be for much longer.** It picks a random room every
+  twenty seconds, and exists only so the world is not inert before a brain connects. Any
+  instruction over the wire retires it for that session — once something is deciding, nothing else
+  should be — but the class itself should be deleted rather than extended.
+- **World events do not reach her memory.** She perceives arrivals and presence, and they reach the
+  companion's log and nothing else. Until they reach reflection, the world tells her where she is
+  but does not improve what she can remember, which is the whole justification for building it.
 - **Movement is client-reported.** The server owns occupancy and decides which room a position is
   in, but does not validate the position itself. Fine for a trusted user on a private world; it is
   not a defence against a modified client.
