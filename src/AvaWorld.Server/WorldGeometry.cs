@@ -50,26 +50,66 @@ public static class WorldGeometry
     }
 
     /// <summary>
-    /// A visible stand-in for Ava on the client. Deliberately a shape, not a character: giving her
-    /// a face before she has a mind invites reading personality into a random walk. The `.glb` from
-    /// the companion's avatar work drops in here later without changing how she moves.
+    /// A visible stand-in for Ava on the client, until there is a model of her.
+    ///
+    /// Deliberately reads as a <em>marker</em> rather than a person. An earlier version was a
+    /// flesh-toned capsule, which managed to be person-coloured without being a person — the
+    /// uncanny worst of both. Cool and clearly synthetic is the honest placeholder: it says "she
+    /// is here" without inviting anyone to read personality into what is still a walk between
+    /// rooms.
+    ///
+    /// It also has to be findable. The rooms are twelve metres across and unlit apart from the sun,
+    /// so the marker carries its own soft light — otherwise "where is she?" is answered by
+    /// wandering around until you bump into her.
+    ///
+    /// Replacing this with a real model is a change to this method and nothing else. Nothing about
+    /// how she moves, or what the world believes, touches her appearance.
     /// </summary>
     public static Node3D BuildAvaStandIn()
     {
         var root = new Node3D { Name = "Ava" };
 
+        var presence = new Color(0.42f, 0.72f, 0.78f); // cool, obviously not skin
+
         root.AddChild(new MeshInstance3D
         {
             Name = "Body",
             Position = new Vector3(0, 0.9f, 0),
-            Mesh = new CapsuleMesh { Height = 1.8f, Radius = 0.32f },
+            Mesh = new CapsuleMesh { Height = 1.8f, Radius = 0.3f },
             MaterialOverride = new StandardMaterial3D
             {
-                AlbedoColor = new Color(0.85f, 0.62f, 0.55f),
+                AlbedoColor = presence,
+                Metallic = 0.1f,
+                Roughness = 0.45f,
                 EmissionEnabled = true,
-                Emission = new Color(0.35f, 0.18f, 0.15f),
-                EmissionEnergyMultiplier = 0.4f,
+                Emission = presence,
+                EmissionEnergyMultiplier = 0.35f,
             },
+        });
+
+        // A small mote above her, so she can be picked out across a room or through a doorway.
+        root.AddChild(new MeshInstance3D
+        {
+            Name = "Mote",
+            Position = new Vector3(0, 2.15f, 0),
+            Mesh = new SphereMesh { Radius = 0.09f, Height = 0.18f },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = presence,
+                EmissionEnabled = true,
+                Emission = new Color(0.75f, 0.95f, 1.0f),
+                EmissionEnergyMultiplier = 2.5f,
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            },
+        });
+
+        root.AddChild(new OmniLight3D
+        {
+            Name = "Presence",
+            Position = new Vector3(0, 1.5f, 0),
+            LightColor = presence,
+            LightEnergy = 1.4f,
+            OmniRange = 7f,
         });
 
         return root;
