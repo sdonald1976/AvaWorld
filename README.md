@@ -38,13 +38,38 @@ or, more likely, the design has drifted.
 ## Running it
 
 ```powershell
-dotnet build
+.\start-all.ps1
+```
+
+That brings up all three pieces, in order, and skips any that are already running:
+
+| | |
+|---|---|
+| **world server** | the place. Headless, keeps going when nothing is watching. |
+| **companion** | her mind. Decides where she goes and why. |
+| **client** | a window to watch through. Optional — the world does not care whether anyone is looking. |
+
+`.\stop-all.ps1` stops everything. Nothing is lost: the world saves on every tick, and a restart
+inside two minutes is not even recorded as time away.
+
+**She will mostly stand still, and that is correct.** Her policy only moves her when there is a
+reason — something on her mind, or something in a room that needs looking after. A world with no
+companion attached and a companion with nothing to do look identical from inside the game, so the
+companion's window is where you find out which: it logs every decision and the reason for it.
+
+Useful switches: `-NoClient` to run headless, `-NoCompanion` to watch the world without her brain
+(she falls back to drifting at random, which is the placeholder rather than her deciding anything),
+and `-Companion <path>` if the companion repo is not a sibling of this one.
+
+### Running the pieces separately
+
+```powershell
 .\run-server.ps1
 ```
 
-The script finds Godot, refuses to launch under a build that can't run C#, and starts the server. It
-prints where the world file is, whether it created or resumed a world, and how long it was away.
-`Ctrl+C` to stop; start it again and it picks up where it left off.
+Starts just the world in the foreground, which is the way to see why it will not start. It prints
+where the world file is, whether it created or resumed a world, and how long it was away. `Ctrl+C`
+to stop; start it again and it picks up where it left off.
 
 Point it at a specific Godot with `-Godot <path>` or by setting `$env:GODOT`.
 
