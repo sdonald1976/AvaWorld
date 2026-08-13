@@ -16,13 +16,15 @@ namespace AvaWorld.Server;
 public static class WorldGeometry
 {
     private const float FloorThickness = 0.4f;
-    private const float WallHeight = 3.0f;
-    private const float WallThickness = 0.3f;
 
     /// <summary>
-    /// Builds floors, perimeter walls with doorway gaps, and a catch volume, parented to
-    /// <paramref name="root"/>. Called on both server and client so the collision they simulate is
-    /// identical.
+    /// Builds the floors — one slab per place, one per doorway — plus a catch volume, parented to
+    /// <paramref name="root"/>.
+    ///
+    /// There are no walls yet, and nothing above knee height at all. What you walk on is exactly
+    /// the footprint the server tests positions against, so the world you see *is* the layout
+    /// rather than a picture of it. Walls would be built from these same bounds with gaps at the
+    /// doorways.
     /// </summary>
     public static void Build(Node3D root, bool withVisuals)
     {
