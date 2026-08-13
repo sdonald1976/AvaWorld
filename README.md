@@ -5,12 +5,12 @@ this is the place. Neither contains the other.
 
 ## Status
 
-**Step one of six.** The world is a headless server with a clock that keeps running when nothing is
-watching it, saves itself atomically, and is honest about time it was not running. There is no
-geometry, no client, and no companion connection yet. Those are steps two through six.
+**Step two of six.** The world is a headless server that keeps running when nothing is watching it,
+with five connected places you can walk around as a client. It knows who is in which room, records
+what happened, and remembers all of it across a restart.
 
-That order is deliberate: "always running" is a property that decays quietly if it isn't designed
-for, and retrofitting it once logic lives in the scene tree is the expensive version.
+No companion connection yet — that is steps four and five, and it is when the world starts earning
+its place rather than just existing.
 
 ## Layout
 
@@ -46,6 +46,31 @@ prints where the world file is, whether it created or resumed a world, and how l
 Point it at a specific Godot with `-Godot <path>` or by setting `$env:GODOT`.
 
 To start a new world, delete `world.json`. To keep it elsewhere, set `AVAWORLD_STATE`.
+
+### Walking around in it
+
+With a server running, connect a client from a second terminal:
+
+```powershell
+& $env:GODOT --path src\AvaWorld.Server --client
+```
+
+WASD to walk, mouse to look, `Escape` to release the mouse, click to take it back. Add
+`--host=<addr>` to reach a world on another machine, `--port=<n>` if you moved it.
+
+Server and client are the same binary in two roles, so the layout and the wire contract cannot
+drift apart. They are still separate processes: the server is authoritative and does not care
+whether anyone is connected.
+
+### Checking it works without a screen
+
+```powershell
+& $env:GODOT --headless --path src\AvaWorld.Server --walk
+```
+
+Connects, tours every room in the layout, and exits. The server should log a room change for each
+one. This exercises the whole loop — connect, move, resolve a room, record it — which is otherwise
+the only part that needs a human at a display.
 
 ### You need the .NET build of Godot
 
@@ -84,6 +109,21 @@ dotnet test
 None of them launch Godot, which is the point — the world's behaviour is testable without a display,
 including the eight-hours-passed case, which runs in milliseconds against a fake clock.
 
+## The layout
+
+Five places — hall, kitchen, study, greenhouse, garden — defined once in `Cottage.cs` and used
+twice: the engine builds floors from it, and the server resolves "which room is this body in" from
+it. One source, so the geometry and the world's beliefs cannot disagree.
+
+Small on purpose. What makes a world feel inhabited is consequence and persistence, not extent —
+the basil you saw wilting yesterday being dead today. Five rooms is enough to be somewhere and to
+have a reason to move, and few enough that each can earn its place before a sixth is added.
+
+Place resolution lives in the simulation rather than the engine, because deciding what the world
+believes about where everyone is deserves tests, and point-in-rectangle is not a rendering concern.
+Standing between rooms resolves to *no place*, which is a real answer: a body in a doorway keeps
+the room it came from rather than having one invented for it.
+
 ## What it does today
 
 - Creates a world, or resumes the saved one.
@@ -98,6 +138,24 @@ including the eight-hours-passed case, which runs in milliseconds against a fake
   prevent. If the world wasn't running on Tuesday afternoon, there is nothing to say about Tuesday
   afternoon.
 - Distinguishes "nothing happened then" from "there is no record of then" (`World.WasRunningAt`).
+- Tracks who is in which room, and records arrivals, joins and departures as world events. Ava is
+  where she was when the world stopped, not at a spawn point — she lives here.
+- Refuses to start on an inconsistent layout: a room with no floor, a footprint naming a place that
+  does not exist, or two rooms claiming the same ground. That last one would make place resolution
+  depend on declaration order, which presents as a haunting.
+
+## Not yet true
+
+Worth stating plainly rather than discovering later:
+
+- **Movement is client-reported.** The server owns occupancy and decides which room a position is
+  in, but it does not validate the position itself. Fine for one trusted user on a private world;
+  it is not a defence against a modified client, and step three's authentication is the point at
+  which that starts to matter.
+- **There is no authentication on the wire.** The world was local when this was designed and is
+  now not. Anything that can reach the port can join.
+- **Ava has no body.** She exists in the world's beliefs and is in a room, but nothing represents
+  her in the scene and nothing moves her. That is step three.
 
 ## Design
 

@@ -126,6 +126,115 @@ public sealed class World
         return elapsed;
     }
 
+    // ---- places and occupancy ----
+
+    /// <summary>
+    /// How many events are kept. Generous enough to cover a long session, small enough that
+    /// rewriting the save file on every tick stays cheap.
+    /// </summary>
+    public const int MaxRetainedEvents = 500;
+
+    /// <summary>
+    /// The layout. Set once at startup by whoever authored the world; not persisted, because the
+    /// layout is authored rather than accumulated and a save that disagreed with it would be
+    /// worse than no save.
+    /// </summary>
+    public PlaceGraph Places { get; private set; } = new();
+
+    /// <summary>
+    /// Installs the layout and reconciles the saved occupancy against it. A body recorded in a
+    /// place that no longer exists — the layout changed under a running world — is moved to
+    /// <paramref name="fallbackPlace"/> rather than left pointing at nothing.
+    /// </summary>
+    public async Task DefineLayoutAsync(
+        PlaceGraph places, string fallbackPlace, CancellationToken ct = default)
+    {
+        var state = State ?? throw new InvalidOperationException("StartAsync must run before DefineLayoutAsync.");
+        if (!places.Contains(fallbackPlace))
+            throw new ArgumentException($"Fallback place '{fallbackPlace}' is not in the layout.", nameof(fallbackPlace));
+
+        Places = places;
+
+        var stranded = state.Occupancy
+            .Where(pair => !places.Contains(pair.Value))
+            .ToList();
+
+        foreach (var (body, gone) in stranded)
+        {
+            _logger.LogWarning(
+                "{Body} was in '{Gone}', which the layout no longer has; moved to '{Fallback}'.",
+                body, gone, fallbackPlace);
+            state.Occupancy[body] = fallbackPlace;
+        }
+
+        if (stranded.Count > 0)
+            await _store.SaveAsync(state, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Where a body is, or null if it isn't in the world.</summary>
+    public string? PlaceOf(string body) =>
+        State is not null && State.Occupancy.TryGetValue(body, out var place) ? place : null;
+
+    /// <summary>Everyone currently in a place.</summary>
+    public IReadOnlyList<string> Occupants(string placeId) =>
+        State is null
+            ? Array.Empty<string>()
+            : State.Occupancy
+                .Where(p => string.Equals(p.Value, placeId, StringComparison.OrdinalIgnoreCase))
+                .Select(p => p.Key)
+                .OrderBy(b => b, StringComparer.Ordinal)
+                .ToList();
+
+    /// <summary>
+    /// Records that a body is now in a place. Returns true if this was a change — callers can
+    /// drive this from a physics volume firing every frame without writing an event each time.
+    /// </summary>
+    public async Task<bool> EnterAsync(string body, string placeId, CancellationToken ct = default)
+    {
+        var state = State ?? throw new InvalidOperationException("StartAsync must run before EnterAsync.");
+        if (!Places.Contains(placeId))
+            throw new InvalidOperationException($"Unknown place '{placeId}'.");
+
+        var known = state.Occupancy.TryGetValue(body, out var current);
+        if (known && string.Equals(current, placeId, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        state.Occupancy[body] = placeId;
+        Record(state, new WorldEvent(
+            _clock.GetUtcNow(),
+            known ? WorldEventKind.Arrived : WorldEventKind.Joined,
+            body,
+            placeId));
+
+        await _store.SaveAsync(state, ct).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>Removes a body from the world (a client disconnected). Ava is never removed.</summary>
+    public async Task<bool> LeaveAsync(string body, CancellationToken ct = default)
+    {
+        var state = State ?? throw new InvalidOperationException("StartAsync must run before LeaveAsync.");
+        if (!state.Occupancy.Remove(body))
+            return false;
+
+        Record(state, new WorldEvent(_clock.GetUtcNow(), WorldEventKind.Left, body, null));
+        await _store.SaveAsync(state, ct).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>The most recent events, newest last.</summary>
+    public IReadOnlyList<WorldEvent> RecentEvents(int count = 20) =>
+        State is null
+            ? Array.Empty<WorldEvent>()
+            : State.Events.TakeLast(Math.Max(0, count)).ToList();
+
+    private static void Record(WorldState state, WorldEvent e)
+    {
+        state.Events.Add(e);
+        if (state.Events.Count > MaxRetainedEvents)
+            state.Events.RemoveRange(0, state.Events.Count - MaxRetainedEvents);
+    }
+
     /// <summary>Total time the world was not running.</summary>
     public TimeSpan TotalDowntime =>
         State is null ? TimeSpan.Zero : State.Gaps.Aggregate(TimeSpan.Zero, (sum, g) => sum + g.Duration);
