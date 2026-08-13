@@ -211,13 +211,14 @@ the room it came from rather than having one invented for it.
 
 Worth stating plainly rather than discovering later:
 
-- **`Wandering` is still here, and shouldn't be for much longer.** It picks a random room every
-  twenty seconds, and exists only so the world is not inert before a brain connects. Any
-  instruction over the wire retires it for that session — once something is deciding, nothing else
-  should be — but the class itself should be deleted rather than extended.
-- **World events do not reach her memory.** She perceives arrivals and presence, and they reach the
-  companion's log and nothing else. Until they reach reflection, the world tells her where she is
-  but does not improve what she can remember, which is the whole justification for building it.
+- **`Wandering` is still here.** It picks a random room every twenty seconds, and exists only so the
+  world is not inert with nobody deciding. A connected brain retires it immediately and it returns
+  when she is left alone, so it no longer competes — but the class should eventually go, not grow.
+- **The world is floor slabs.** Five coloured rectangles and four corridor strips, no walls, no
+  ceiling, nothing above knee height. More to the point there are no *objects*: nothing in any room
+  changes over time, so nothing can be tended, missed, or noticed. The design's claim is that
+  consequence and persistence are what make a world feel inhabited rather than extent — which means
+  a tomato plant that dries out over days would do more here than walls.
 - **Movement is client-reported.** The server owns occupancy and decides which room a position is
   in, but does not validate the position itself. Fine for a trusted user on a private world; it is
   not a defence against a modified client.
